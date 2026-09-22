@@ -644,6 +644,91 @@
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 3000);
         }
+        <!-- Load Firebase SDK Modular dari CDN -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { 
+    getFirestore, 
+    doc, 
+    getDoc, 
+    setDoc, 
+    addDoc, 
+    collection, 
+    serverTimestamp 
+  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+  // 1. Tempel Konfigurasi Firebase Anda di sini
+  const firebaseConfig = {
+    apiKey: "AIzaSyCeBU-RHivwXxIjHgBgOR7B7--akrmb6gg",
+  authDomain: "absensi-rfid-kelas.firebaseapp.com",
+  projectId: "absensi-rfid-kelas",
+  storageBucket: "absensi-rfid-kelas.firebasestorage.app",
+  messagingSenderId: "357271926220",
+  appId: "1:357271926220:web:4553ed88c3751e79155969",
+  measurementId: "G-TD419LVCGJ"
+};
+
+  // Inisialisasi Firebase & Firestore
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // --- A. FUNGSI 1: Mendaftarkan Siswa Baru ke Firebase ---
+  async function registerStudent(rfidUid, name, nis, studentClass) {
+    try {
+      // Menggunakan UID kartu sebagai Document ID di koleksi 'students'
+      await setDoc(doc(db, "students", rfidUid), {
+        name: name,
+        nis: nis,
+        class: studentClass,
+        createdAt: serverTimestamp()
+      });
+      console.log("Siswa berhasil terdaftar di Firebase!");
+    } catch (error) {
+      console.error("Gagal mendaftarkan siswa:", error);
+    }
+  }
+
+  // --- B. FUNGSI 2: Proses Tap Kartu Absensi ---
+  async function processTapCard(rfidUid) {
+    try {
+      // 1. Cari data siswa berdasarkan UID kartu di Firestore
+      const studentRef = doc(db, "students", rfidUid);
+      const studentSnap = await getDoc(studentRef);
+
+      if (!studentSnap.exists()) {
+        alert("Kartu belum terdaftar!");
+        return;
+      }
+
+      const studentData = studentSnap.data();
+
+      // 2. Hitung status keterlambatan (Misal jam masuk max 07:00 AM)
+      const now = new Date();
+      const lateLimit = new Date();
+      lateLimit.setHours(7, 0, 0); // Jam 07:00
+
+      const status = now > lateLimit ? "Terlambat" : "Hadir";
+
+      // 3. Simpan riwayat absensi ke koleksi 'attendances'
+      await addDoc(collection(db, "attendances"), {
+        student_id: rfidUid,
+        name: studentData.name,
+        class: studentData.class,
+        status: status,
+        timestamp: serverTimestamp(),
+        date: now.toISOString().split('T')[0] // Format YYYY-MM-DD
+      });
+
+      console.log(`Absensi berhasil! Nama: ${studentData.name}, Status: ${status}`);
+
+    } catch (error) {
+      console.error("Gagal mencatat absensi:", error);
+    }
+  }
+
+  // Contoh Pengujian (Dapat dihubungkan dengan event listener RFID USB)
+  // registerStudent("1342567890", "Budi Santoso", "20260101", "XII IPA 1");
+  // processTapCard("1342567890");
     </script>
 </body>
 </html>
