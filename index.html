@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Aplikasi Absensi Kelas RFID & Panel Admin</title>
+  <title>Aplikasi Absensi RFID & Authentication Admin</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Lucide Icons -->
@@ -23,25 +23,38 @@
       </div>
     </div>
 
-    <!-- Admin Action Buttons -->
+    <!-- Admin Status & Control Buttons -->
     <div class="flex items-center gap-3">
-      <button onclick="openModal('addStudentModal')" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition">
-        <i data-lucide="user-plus" class="w-4 h-4"></i> Tambah Siswa
+      <!-- Tombol Login (Tampil saat belum login) -->
+      <button id="btnLoginModal" onclick="openModal('loginModal')" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition">
+        <i data-lucide="log-in" class="w-4 h-4"></i> Login Admin
       </button>
+
+      <!-- Tombol Admin (Hanya tampil saat SUDAH login) -->
+      <div id="adminControls" class="hidden items-center gap-3">
+        <span class="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-full font-medium flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Mode Admin
+        </span>
+        <button onclick="openModal('addStudentModal')" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition">
+          <i data-lucide="user-plus" class="w-4 h-4"></i> Tambah Siswa
+        </button>
+        <button id="btnLogout" class="flex items-center gap-2 bg-rose-600 hover:bg-rose-500 text-white px-3 py-2 rounded-lg font-medium text-sm transition">
+          <i data-lucide="log-out" class="w-4 h-4"></i> Logout
+        </button>
+      </div>
     </div>
   </header>
 
   <!-- Main Content -->
   <main class="flex-1 p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-    <!-- Left Panel: Scanner & Fast Manual Input -->
+    <!-- Left Panel: Scanner -->
     <section class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex flex-col justify-between">
       <div>
         <h2 class="text-lg font-semibold text-slate-200 mb-4 flex items-center gap-2">
           <i data-lucide="nfc" class="w-5 h-5 text-indigo-400"></i> Tap Reader Status
         </h2>
 
-        <!-- Active Hidden Input for USB RFID Listener -->
         <div class="mb-6 bg-slate-900 border border-slate-700 p-4 rounded-lg">
           <label for="rfidInput" class="block text-xs font-medium text-slate-400 mb-1">
             Siap Scan (Auto-Focus Reader)
@@ -50,7 +63,6 @@
                  class="w-full bg-slate-800 border border-indigo-500/50 text-indigo-300 px-3 py-2 rounded font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
         </div>
 
-        <!-- Attendance Stats Summary -->
         <div class="grid grid-cols-2 gap-3 mb-4">
           <div class="bg-slate-900/60 p-3 rounded-lg border border-slate-700/50">
             <span class="text-xs text-slate-400 block">Hadir</span>
@@ -72,11 +84,11 @@
       </div>
 
       <div class="text-xs text-slate-500 text-center border-t border-slate-700/50 pt-3">
-        Pastikan cursor tetap fokus pada kotak input saat di kelas.
+        Sistem Absensi Otomatis RFID
       </div>
     </section>
 
-    <!-- Right Panel: Attendance Log Table -->
+    <!-- Right Panel: Attendance Table -->
     <section class="lg:col-span-2 bg-slate-800 border border-slate-700 rounded-xl p-5 flex flex-col">
       <div class="flex justify-between items-center mb-4">
         <h2 class="text-lg font-semibold text-slate-200 flex items-center gap-2">
@@ -85,7 +97,6 @@
         <span id="currentDate" class="text-xs text-slate-400 font-mono bg-slate-900 px-3 py-1 rounded-full border border-slate-700">--</span>
       </div>
 
-      <!-- Table Container -->
       <div class="flex-1 overflow-x-auto">
         <table class="w-full text-left text-sm text-slate-300">
           <thead class="bg-slate-900 text-slate-400 text-xs uppercase border-b border-slate-700">
@@ -99,7 +110,6 @@
             </tr>
           </thead>
           <tbody id="attendanceTableBody" class="divide-y divide-slate-700/50">
-            <!-- Data loaded dynamically from Firebase -->
             <tr>
               <td colspan="6" class="text-center py-8 text-slate-500">Memuat data absensi...</td>
             </tr>
@@ -110,7 +120,39 @@
 
   </main>
 
-  <!-- ==================== MODAL 1: TAMBAH SISWA BARU ==================== -->
+  <!-- ==================== MODAL: LOGIN ADMIN ==================== -->
+  <div id="loginModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+    <div class="bg-slate-800 border border-slate-700 rounded-xl w-full max-w-md p-6 shadow-2xl">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <i data-lucide="lock" class="w-5 h-5 text-indigo-400"></i> Login Hak Akses Admin
+        </h3>
+        <button onclick="closeModal('loginModal')" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="loginForm" class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Email Admin</label>
+          <input type="email" id="adminEmail" required placeholder="admin@sekolah.sch.id" 
+                 class="w-full bg-slate-900 border border-slate-700 text-white px-3 py-2 rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Password</label>
+          <input type="password" id="adminPassword" required placeholder="••••••••" 
+                 class="w-full bg-slate-900 border border-slate-700 text-white px-3 py-2 rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+        </div>
+
+        <div class="flex justify-end gap-3 pt-3 border-t border-slate-700">
+          <button type="button" onclick="closeModal('loginModal')" class="px-4 py-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 text-sm">Batal</button>
+          <button type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm">Masuk Sebagai Admin</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: TAMBAH SISWA ==================== -->
   <div id="addStudentModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
     <div class="bg-slate-800 border border-slate-700 rounded-xl w-full max-w-md p-6 shadow-2xl">
       <div class="flex justify-between items-center mb-4">
@@ -129,7 +171,7 @@
                  class="w-full bg-slate-900 border border-slate-700 text-white px-3 py-2 rounded focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono">
         </div>
         <div>
-          <label class="block text-xs font-medium text-slate-300 mb-1">NIS (Nomor Induk Siswa)</label>
+          <label class="block text-xs font-medium text-slate-300 mb-1">NIS</label>
           <input type="text" id="newNis" required placeholder="Contoh: 20260101" 
                  class="w-full bg-slate-900 border border-slate-700 text-white px-3 py-2 rounded focus:ring-2 focus:ring-emerald-500 focus:outline-none">
         </div>
@@ -152,7 +194,7 @@
     </div>
   </div>
 
-  <!-- ==================== MODAL 2: EDIT STATUS ABSENSI ==================== -->
+  <!-- ==================== MODAL: EDIT STATUS ABSENSI ==================== -->
   <div id="editStatusModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
     <div class="bg-slate-800 border border-slate-700 rounded-xl w-full max-w-md p-6 shadow-2xl">
       <div class="flex justify-between items-center mb-4">
@@ -166,7 +208,6 @@
 
       <form id="editStatusForm" class="space-y-4">
         <input type="hidden" id="editAttendanceId">
-        
         <div>
           <span class="block text-xs text-slate-400">Nama Siswa:</span>
           <span id="editStudentName" class="text-base font-semibold text-white block">--</span>
@@ -183,12 +224,6 @@
           </select>
         </div>
 
-        <div>
-          <label class="block text-xs font-medium text-slate-300 mb-1">Catatan / Keterangan (Opsional)</label>
-          <textarea id="editNotes" rows="2" placeholder="Contoh: Surat dokter terlampir" 
-                    class="w-full bg-slate-900 border border-slate-700 text-white px-3 py-2 rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"></textarea>
-        </div>
-
         <div class="flex justify-end gap-3 pt-3 border-t border-slate-700">
           <button type="button" onclick="closeModal('editStatusModal')" class="px-4 py-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 text-sm">Batal</button>
           <button type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm">Update Status</button>
@@ -197,9 +232,15 @@
     </div>
   </div>
 
-  <!-- Firebase JavaScript Logic (Module) -->
+  <!-- Firebase Auth & Firestore JavaScript Module -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { 
+      getAuth, 
+      signInWithEmailAndPassword, 
+      signOut, 
+      onAuthStateChanged 
+    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { 
       getFirestore, 
       doc, 
@@ -225,14 +266,57 @@
   measurementId: "G-TD419LVCGJ"
 };
 
-    // Inisialisasi Firebase
+    // Inisialisasi Firebase & Auth
     const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
     const db = getFirestore(app);
 
+    let currentUser = null;
     const todayStr = new Date().toISOString().split('T')[0];
     document.getElementById('currentDate').textContent = todayStr;
 
-    // --- A. LISTEN REALTIME DATA ABSENSI HARI INI ---
+    // --- A. MONITOR SESI LOGIN ADMIN (AUTH STATE) ---
+    onAuthStateChanged(auth, (user) => {
+      currentUser = user;
+      const btnLoginModal = document.getElementById('btnLoginModal');
+      const adminControls = document.getElementById('adminControls');
+
+      if (user) {
+        // Jika Admin Terautentikasi
+        btnLoginModal.classList.add('hidden');
+        adminControls.classList.remove('hidden');
+        adminControls.classList.add('flex');
+      } else {
+        // Jika Belum/Tidak Login (Mode Monitor Kelas)
+        btnLoginModal.classList.remove('hidden');
+        adminControls.classList.add('hidden');
+        adminControls.classList.remove('flex');
+      }
+    });
+
+    // --- B. EVENT LOGIN ADMIN ---
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('adminEmail').value;
+      const password = document.getElementById('adminPassword').value;
+
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+        alert("Login Admin Berhasil!");
+        document.getElementById('loginForm').reset();
+        window.closeModal('loginModal');
+      } catch (err) {
+        alert("Gagal Login: " + err.message);
+      }
+    });
+
+    // --- C. EVENT LOGOUT ---
+    document.getElementById('btnLogout').addEventListener('click', async () => {
+      await signOut(auth);
+      alert("Berhasil Logout dari Admin.");
+    });
+
+    // --- D. REALTIME TABLE ABSENSI ---
     const q = query(collection(db, "attendances"), where("date", "==", todayStr));
     
     onSnapshot(q, (snapshot) => {
@@ -248,20 +332,25 @@
           const data = docSnap.data();
           const docId = docSnap.id;
 
-          // Count Statistics
           if (data.status === 'Hadir') countHadir++;
           else if (data.status === 'Terlambat') countTerlambat++;
           else if (data.status === 'Sakit' || data.status === 'Izin') countIzin++;
           else if (data.status === 'Tanpa Keterangan') countAlpa++;
 
-          // Formatting Time
           const timeFormatted = data.timestamp ? new Date(data.timestamp.toDate()).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--';
 
-          // Badge Styling
           let badgeClass = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
           if (data.status === 'Terlambat') badgeClass = "bg-amber-500/10 text-amber-400 border-amber-500/20";
           else if (data.status === 'Sakit' || data.status === 'Izin') badgeClass = "bg-blue-500/10 text-blue-400 border-blue-500/20";
           else if (data.status === 'Tanpa Keterangan') badgeClass = "bg-rose-500/10 text-rose-400 border-rose-500/20";
+
+          // Tombol Edit hanya berfungsi jika currentUser (Admin) aktif
+          const editBtn = currentUser ? `
+            <button onclick="openEditModal('${docId}', '${data.name}', '${data.status}')" 
+                    class="text-xs bg-slate-700 hover:bg-slate-600 text-indigo-300 px-2.5 py-1 rounded border border-slate-600 transition">
+              Edit
+            </button>
+          ` : `<span class="text-xs text-slate-600 italic">Terkunci</span>`;
 
           const rowHtml = `
             <tr class="hover:bg-slate-700/30">
@@ -274,28 +363,24 @@
                   ${data.status}
                 </span>
               </td>
-              <td class="py-3 px-4 text-right">
-                <button onclick="openEditModal('${docId}', '${data.name}', '${data.status}')" 
-                        class="text-xs bg-slate-700 hover:bg-slate-600 text-indigo-300 px-2.5 py-1 rounded border border-slate-600 transition">
-                  Edit
-                </button>
-              </td>
+              <td class="py-3 px-4 text-right">${editBtn}</td>
             </tr>
           `;
           tableBody.innerHTML += rowHtml;
         });
       }
 
-      // Update counters
       document.getElementById('countHadir').textContent = countHadir;
       document.getElementById('countTerlambat').textContent = countTerlambat;
       document.getElementById('countIzin').textContent = countIzin;
       document.getElementById('countAlpa').textContent = countAlpa;
     });
 
-    // --- B. FORM PROSES TAMBAH SISWA (ADMIN) ---
+    // --- E. TAMBAH SISWA (Hanya Jika Terautentikasi) ---
     document.getElementById('addStudentForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (!currentUser) return alert("Anda harus login sebagai Admin!");
+
       const rfidUid = document.getElementById('newRfidUid').value.trim();
       const nis = document.getElementById('newNis').value.trim();
       const name = document.getElementById('newName').value.trim();
@@ -316,48 +401,44 @@
       }
     });
 
-    // --- C. FORM EDIT STATUS ABSENSI (ADMIN) ---
+    // --- F. EDIT STATUS (Hanya Jika Terautentikasi) ---
     document.getElementById('editStatusForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (!currentUser) return alert("Anda harus login sebagai Admin!");
+
       const docId = document.getElementById('editAttendanceId').value;
       const newStatus = document.getElementById('editStatusSelect').value;
-      const notes = document.getElementById('editNotes').value;
 
       try {
         const attendanceRef = doc(db, "attendances", docId);
-        await updateDoc(attendanceRef, {
-          status: newStatus,
-          notes: notes
-        });
-        alert("Status kehadiran berhasil diperbarui!");
+        await updateDoc(attendanceRef, { status: newStatus });
+        alert("Status berhasil diubah!");
         window.closeModal('editStatusModal');
       } catch (err) {
         alert("Gagal memperbarui status: " + err.message);
       }
     });
 
-    // --- D. AUTO SCAN RFID TAP READER ---
+    // --- G. TAP RFID AUTO LISTENER ---
     const rfidInput = document.getElementById('rfidInput');
     rfidInput.addEventListener('keypress', async (e) => {
       if (e.key === 'Enter') {
         const uid = rfidInput.value.trim();
         rfidInput.value = '';
-
         if (!uid) return;
 
-        // Cari Siswa di Collection 'students'
         const studentRef = doc(db, "students", uid);
         const studentSnap = await getDoc(studentRef);
 
         if (!studentSnap.exists()) {
-          alert("Kartu RFID tidak terdaftar! Silakan tambahkan siswa terlebih dahulu.");
+          alert("Kartu RFID tidak terdaftar!");
           return;
         }
 
         const sData = studentSnap.data();
         const now = new Date();
         const lateLimit = new Date();
-        lateLimit.setHours(7, 0, 0); // Batas masuk jam 07:00
+        lateLimit.setHours(7, 0, 0);
 
         const status = now > lateLimit ? "Terlambat" : "Hadir";
 
