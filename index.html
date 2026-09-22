@@ -8,6 +8,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- SheetJS CDN (Untuk Export Excel .xlsx) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen font-sans flex flex-col">
 
@@ -48,8 +50,8 @@
   <!-- Main Content -->
   <main class="flex-1 p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-    <!-- Left Panel: Scanner -->
-    <section class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex flex-col justify-between">
+    <!-- Left Panel: Scanner & Export Excel -->
+    <section class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex flex-col justify-between gap-6">
       <div>
         <h2 class="text-lg font-semibold text-slate-200 mb-4 flex items-center gap-2">
           <i data-lucide="nfc" class="w-5 h-5 text-indigo-400"></i> Tap Reader Status
@@ -63,7 +65,7 @@
                  class="w-full bg-slate-800 border border-indigo-500/50 text-indigo-300 px-3 py-2 rounded font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
         </div>
 
-        <div class="grid grid-cols-2 gap-3 mb-4">
+        <div class="grid grid-cols-2 gap-3 mb-6">
           <div class="bg-slate-900/60 p-3 rounded-lg border border-slate-700/50">
             <span class="text-xs text-slate-400 block">Hadir</span>
             <span id="countHadir" class="text-2xl font-bold text-emerald-400">0</span>
@@ -79,6 +81,23 @@
           <div class="bg-slate-900/60 p-3 rounded-lg border border-slate-700/50">
             <span class="text-xs text-slate-400 block">Alpa</span>
             <span id="countAlpa" class="text-2xl font-bold text-rose-400">0</span>
+          </div>
+        </div>
+
+        <!-- FITUR BARU: PANEL REKAP BULANAN EXCEL -->
+        <div class="bg-slate-900/80 border border-slate-700 p-4 rounded-lg">
+          <h3 class="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
+            <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-400"></i> Rekap Absen Bulanan (.xlsx)
+          </h3>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Pilih Bulan & Tahun</label>
+              <input type="month" id="rekapMonthPicker" 
+                     class="w-full bg-slate-800 border border-slate-700 text-slate-200 px-3 py-2 rounded text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+            </div>
+            <button id="btnExportExcel" class="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg font-medium text-xs transition">
+              <i data-lucide="download" class="w-4 h-4"></i> Download Excel Per Kelas
+            </button>
           </div>
         </div>
       </div>
@@ -214,6 +233,7 @@
       getFirestore, 
       doc, 
       getDoc, 
+      getDocs,
       setDoc, 
       addDoc, 
       updateDoc,
@@ -242,8 +262,13 @@
     const googleProvider = new GoogleAuthProvider();
 
     let currentUser = null;
-    const todayStr = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
     document.getElementById('currentDate').textContent = todayStr;
+
+    // Set nilai default picker bulan ke bulan berjalan (YYYY-MM)
+    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    document.getElementById('rekapMonthPicker').value = currentMonthStr;
 
     // --- A. MONITOR SESI LOGIN ADMIN (AUTH STATE) ---
     onAuthStateChanged(auth, (user) => {
@@ -252,12 +277,10 @@
       const adminControls = document.getElementById('adminControls');
 
       if (user) {
-        // Jika Admin Terautentikasi
         btnLoginGoogle.classList.add('hidden');
         adminControls.classList.remove('hidden');
         adminControls.classList.add('flex');
       } else {
-        // Jika Belum/Tidak Login
         btnLoginGoogle.classList.remove('hidden');
         adminControls.classList.add('hidden');
         adminControls.classList.remove('flex');
@@ -280,7 +303,7 @@
       alert("Berhasil Logout.");
     });
 
-    // --- D. REALTIME TABLE ABSENSI ---
+    // --- D. REALTIME TABLE ABSENSI HARI INI ---
     const q = query(collection(db, "attendances"), where("date", "==", todayStr));
     
     onSnapshot(q, (snapshot) => {
@@ -338,11 +361,96 @@
       document.getElementById('countIzin').textContent = countIzin;
       document.getElementById('countAlpa').textContent = countAlpa;
       
-      // Re-initialize Lucide Icons untuk elemen baru
       if (window.lucide) window.lucide.createIcons();
     });
 
-    // --- E. TAMBAH SISWA ---
+    // --- E. EXPORT EXCEL PER KELAS BULANAN ---
+    document.getElementById('btnExportExcel').addEventListener('click', async () => {
+      const monthVal = document.getElementById('rekapMonthPicker').value; // Format: YYYY-MM
+      if (!monthVal) {
+        alert("Silakan pilih bulan dan tahun terlebih dahulu.");
+        return;
+      }
+
+      const btn = document.getElementById('btnExportExcel');
+      btn.disabled = true;
+      btn.innerText = "Mengunduh Data...";
+
+      try {
+        // Ambil range awal dan akhir bulan
+        const startDateStr = `${monthVal}-01`;
+        const endDateStr = `${monthVal}-31`;
+
+        const qRekap = query(
+          collection(db, "attendances"),
+          where("date", ">=", startDateStr),
+          where("date", "<=", endDateStr)
+        );
+
+        const querySnapshot = await getDocs(qRekap);
+
+        if (querySnapshot.empty) {
+          alert(`Tidak ditemukan data absensi untuk bulan ${monthVal}.`);
+          btn.disabled = false;
+          btn.innerHTML = `<i data-lucide="download" class="w-4 h-4"></i> Download Excel Per Kelas`;
+          if (window.lucide) window.lucide.createIcons();
+          return;
+        }
+
+        // Kelompokkan data berdasarkan Kelas
+        const dataByClass = {};
+
+        querySnapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          const className = d.class || 'Lainnya';
+
+          if (!dataByClass[className]) {
+            dataByClass[className] = [];
+          }
+
+          const timeStr = d.timestamp ? new Date(d.timestamp.toDate()).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
+
+          dataByClass[className].push({
+            "Tanggal": d.date,
+            "Waktu Tap": timeStr,
+            "NIS": d.nis || '-',
+            "Nama Siswa": d.name,
+            "Kelas": d.class,
+            "Status": d.status
+          });
+        });
+
+        // Buat Workbook Excel
+        const workbook = XLSX.utils.book_new();
+
+        // Buat Sheet untuk setiap kelas
+        Object.keys(dataByClass).forEach((className) => {
+          const sheetData = dataByClass[className];
+          
+          // Urutkan data berdasarkan Tanggal
+          sheetData.sort((a, b) => a["Tanggal"].localeCompare(b["Tanggal"]));
+
+          const worksheet = XLSX.utils.json_to_sheet(sheetData);
+
+          // Karakter aman untuk nama sheet Excel (maks 31 karakter, hapus karakter ilegal)
+          const safeSheetName = className.replace(/[:\\/?*\[\]]/g, '').substring(0, 31);
+          XLSX.utils.book_append_sheet(workbook, worksheet, safeSheetName);
+        });
+
+        // Simpan File Excel
+        XLSX.writeFile(workbook, `Rekap_Absensi_${monthVal}.xlsx`);
+        alert(`Berhasil mengunduh Rekap Absensi Bulan ${monthVal}!`);
+
+      } catch (err) {
+        alert("Gagal membuat file Excel: " + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i data-lucide="download" class="w-4 h-4"></i> Download Excel Per Kelas`;
+        if (window.lucide) window.lucide.createIcons();
+      }
+    });
+
+    // --- F. TAMBAH SISWA ---
     document.getElementById('addStudentForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!currentUser) return alert("Anda harus login sebagai Admin!");
@@ -367,7 +475,7 @@
       }
     });
 
-    // --- F. EDIT STATUS ---
+    // --- G. EDIT STATUS ---
     document.getElementById('editStatusForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!currentUser) return alert("Anda harus login sebagai Admin!");
@@ -385,7 +493,7 @@
       }
     });
 
-    // --- G. TAP RFID AUTO LISTENER ---
+    // --- H. TAP RFID AUTO LISTENER ---
     const rfidInput = document.getElementById('rfidInput');
     rfidInput.addEventListener('keypress', async (e) => {
       if (e.key === 'Enter') {
@@ -403,11 +511,10 @@
           }
 
           const sData = studentSnap.data();
-          const now = new Date();
           const lateLimit = new Date();
           lateLimit.setHours(7, 0, 0);
 
-          const status = now > lateLimit ? "Terlambat" : "Hadir";
+          const status = new Date() > lateLimit ? "Terlambat" : "Hadir";
 
           await addDoc(collection(db, "attendances"), {
             student_id: uid,
