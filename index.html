@@ -25,9 +25,9 @@
 
     <!-- Admin Status & Control Buttons -->
     <div class="flex items-center gap-3">
-      <!-- Tombol Login (Tampil saat belum login) -->
-      <button id="btnLoginModal" onclick="openModal('loginModal')" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition">
-        <i data-lucide="log-in" class="w-4 h-4"></i> Login Admin
+      <!-- Tombol Login Google (Tampil saat belum login) -->
+      <button id="btnLoginGoogle" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition">
+        <i data-lucide="log-in" class="w-4 h-4"></i> Login Admin (Google)
       </button>
 
       <!-- Tombol Admin (Hanya tampil saat SUDAH login) -->
@@ -120,38 +120,6 @@
 
   </main>
 
-  <!-- ==================== MODAL: LOGIN ADMIN ==================== -->
-  <div id="loginModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
-    <div class="bg-slate-800 border border-slate-700 rounded-xl w-full max-w-md p-6 shadow-2xl">
-      <div class="flex justify-between items-center mb-4">
-        <h3 class="text-lg font-bold text-white flex items-center gap-2">
-          <i data-lucide="lock" class="w-5 h-5 text-indigo-400"></i> Login Hak Akses Admin
-        </h3>
-        <button onclick="closeModal('loginModal')" class="text-slate-400 hover:text-white">
-          <i data-lucide="x" class="w-5 h-5"></i>
-        </button>
-      </div>
-
-      <form id="loginForm" class="space-y-4">
-        <div>
-          <label class="block text-xs font-medium text-slate-300 mb-1">Email Admin</label>
-          <input type="email" id="adminEmail" required placeholder="admin@sekolah.sch.id" 
-                 class="w-full bg-slate-900 border border-slate-700 text-white px-3 py-2 rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-slate-300 mb-1">Password</label>
-          <input type="password" id="adminPassword" required placeholder="••••••••" 
-                 class="w-full bg-slate-900 border border-slate-700 text-white px-3 py-2 rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-        </div>
-
-        <div class="flex justify-end gap-3 pt-3 border-t border-slate-700">
-          <button type="button" onclick="closeModal('loginModal')" class="px-4 py-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 text-sm">Batal</button>
-          <button type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm">Masuk Sebagai Admin</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
   <!-- ==================== MODAL: TAMBAH SISWA ==================== -->
   <div id="addStudentModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
     <div class="bg-slate-800 border border-slate-700 rounded-xl w-full max-w-md p-6 shadow-2xl">
@@ -237,7 +205,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { 
       getAuth, 
-      signInWithEmailAndPassword, 
+      GoogleAuthProvider, 
+      signInWithPopup, 
       signOut, 
       onAuthStateChanged 
     } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -266,10 +235,11 @@
   measurementId: "G-TD419LVCGJ"
 };
 
-    // Inisialisasi Firebase & Auth
+    // Inisialisasi Firebase, Auth, dan Provider Google
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+    const googleProvider = new GoogleAuthProvider();
 
     let currentUser = null;
     const todayStr = new Date().toISOString().split('T')[0];
@@ -278,42 +248,36 @@
     // --- A. MONITOR SESI LOGIN ADMIN (AUTH STATE) ---
     onAuthStateChanged(auth, (user) => {
       currentUser = user;
-      const btnLoginModal = document.getElementById('btnLoginModal');
+      const btnLoginGoogle = document.getElementById('btnLoginGoogle');
       const adminControls = document.getElementById('adminControls');
 
       if (user) {
         // Jika Admin Terautentikasi
-        btnLoginModal.classList.add('hidden');
+        btnLoginGoogle.classList.add('hidden');
         adminControls.classList.remove('hidden');
         adminControls.classList.add('flex');
       } else {
-        // Jika Belum/Tidak Login (Mode Monitor Kelas)
-        btnLoginModal.classList.remove('hidden');
+        // Jika Belum/Tidak Login
+        btnLoginGoogle.classList.remove('hidden');
         adminControls.classList.add('hidden');
         adminControls.classList.remove('flex');
       }
     });
 
-    // --- B. EVENT LOGIN ADMIN ---
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = document.getElementById('adminEmail').value;
-      const password = document.getElementById('adminPassword').value;
-
+    // --- B. EVENT LOGIN GOOGLE ---
+    document.getElementById('btnLoginGoogle').addEventListener('click', async () => {
       try {
-        await signInWithEmailAndPassword(auth, email, password);
+        await signInWithPopup(auth, googleProvider);
         alert("Login Admin Berhasil!");
-        document.getElementById('loginForm').reset();
-        window.closeModal('loginModal');
       } catch (err) {
-        alert("Gagal Login: " + err.message);
+        alert("Gagal Login dengan Google: " + err.message);
       }
     });
 
     // --- C. EVENT LOGOUT ---
     document.getElementById('btnLogout').addEventListener('click', async () => {
       await signOut(auth);
-      alert("Berhasil Logout dari Admin.");
+      alert("Berhasil Logout.");
     });
 
     // --- D. REALTIME TABLE ABSENSI ---
@@ -344,7 +308,6 @@
           else if (data.status === 'Sakit' || data.status === 'Izin') badgeClass = "bg-blue-500/10 text-blue-400 border-blue-500/20";
           else if (data.status === 'Tanpa Keterangan') badgeClass = "bg-rose-500/10 text-rose-400 border-rose-500/20";
 
-          // Tombol Edit hanya berfungsi jika currentUser (Admin) aktif
           const editBtn = currentUser ? `
             <button onclick="openEditModal('${docId}', '${data.name}', '${data.status}')" 
                     class="text-xs bg-slate-700 hover:bg-slate-600 text-indigo-300 px-2.5 py-1 rounded border border-slate-600 transition">
@@ -374,9 +337,12 @@
       document.getElementById('countTerlambat').textContent = countTerlambat;
       document.getElementById('countIzin').textContent = countIzin;
       document.getElementById('countAlpa').textContent = countAlpa;
+      
+      // Re-initialize Lucide Icons untuk elemen baru
+      if (window.lucide) window.lucide.createIcons();
     });
 
-    // --- E. TAMBAH SISWA (Hanya Jika Terautentikasi) ---
+    // --- E. TAMBAH SISWA ---
     document.getElementById('addStudentForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!currentUser) return alert("Anda harus login sebagai Admin!");
@@ -401,7 +367,7 @@
       }
     });
 
-    // --- F. EDIT STATUS (Hanya Jika Terautentikasi) ---
+    // --- F. EDIT STATUS ---
     document.getElementById('editStatusForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!currentUser) return alert("Anda harus login sebagai Admin!");
@@ -427,36 +393,48 @@
         rfidInput.value = '';
         if (!uid) return;
 
-        const studentRef = doc(db, "students", uid);
-        const studentSnap = await getDoc(studentRef);
+        try {
+          const studentRef = doc(db, "students", uid);
+          const studentSnap = await getDoc(studentRef);
 
-        if (!studentSnap.exists()) {
-          alert("Kartu RFID tidak terdaftar!");
-          return;
+          if (!studentSnap.exists()) {
+            alert("Kartu RFID tidak terdaftar!");
+            return;
+          }
+
+          const sData = studentSnap.data();
+          const now = new Date();
+          const lateLimit = new Date();
+          lateLimit.setHours(7, 0, 0);
+
+          const status = now > lateLimit ? "Terlambat" : "Hadir";
+
+          await addDoc(collection(db, "attendances"), {
+            student_id: uid,
+            nis: sData.nis,
+            name: sData.name,
+            class: sData.class,
+            status: status,
+            date: todayStr,
+            timestamp: serverTimestamp()
+          });
+        } catch (err) {
+          alert("Gagal mencatat absensi: " + err.message);
         }
-
-        const sData = studentSnap.data();
-        const now = new Date();
-        const lateLimit = new Date();
-        lateLimit.setHours(7, 0, 0);
-
-        const status = now > lateLimit ? "Terlambat" : "Hadir";
-
-        await addDoc(collection(db, "attendances"), {
-          student_id: uid,
-          nis: sData.nis,
-          name: sData.name,
-          class: sData.class,
-          status: status,
-          date: todayStr,
-          timestamp: serverTimestamp()
-        });
       }
     });
 
     // Global Modal Functions
-    window.openModal = (id) => document.getElementById(id).classList.replace('hidden', 'flex');
-    window.closeModal = (id) => document.getElementById(id).classList.replace('flex', 'hidden');
+    window.openModal = (id) => {
+      const modal = document.getElementById(id);
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    };
+    window.closeModal = (id) => {
+      const modal = document.getElementById(id);
+      modal.classList.remove('flex');
+      modal.classList.add('hidden');
+    };
     window.openEditModal = (docId, name, currentStatus) => {
       document.getElementById('editAttendanceId').value = docId;
       document.getElementById('editStudentName').textContent = name;
@@ -464,7 +442,7 @@
       window.openModal('editStatusModal');
     };
 
-    lucide.createIcons();
+    if (window.lucide) window.lucide.createIcons();
   </script>
 </body>
 </html>
