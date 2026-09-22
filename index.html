@@ -84,7 +84,7 @@
           </div>
         </div>
 
-        <!-- FITUR BARU: PANEL REKAP BULANAN EXCEL -->
+        <!-- PANEL REKAP BULANAN EXCEL -->
         <div class="bg-slate-900/80 border border-slate-700 p-4 rounded-lg">
           <h3 class="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
             <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-400"></i> Rekap Absen Bulanan (.xlsx)
@@ -96,7 +96,7 @@
                      class="w-full bg-slate-800 border border-slate-700 text-slate-200 px-3 py-2 rounded text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
             </div>
             <button id="btnExportExcel" class="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg font-medium text-xs transition">
-              <i data-lucide="download" class="w-4 h-4"></i> Download Excel Per Kelas
+              <i data-lucide="download" class="w-4 h-4"></i> Download Rekap Per Kelas
             </button>
           </div>
         </div>
@@ -255,7 +255,7 @@
   measurementId: "G-TD419LVCGJ"
 };
 
-    // Inisialisasi Firebase, Auth, dan Provider Google
+    // Inisialisasi Firebase
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
@@ -364,9 +364,9 @@
       if (window.lucide) window.lucide.createIcons();
     });
 
-    // --- E. EXPORT EXCEL PER KELAS BULANAN ---
+    // --- E. EXPORT REKAP EXCEL BULANAN (PER SISWA PER KELAS) ---
     document.getElementById('btnExportExcel').addEventListener('click', async () => {
-      const monthVal = document.getElementById('rekapMonthPicker').value; // Format: YYYY-MM
+      const monthVal = document.getElementById('rekapMonthPicker').value; // YYYY-MM
       if (!monthVal) {
         alert("Silakan pilih bulan dan tahun terlebih dahulu.");
         return;
@@ -374,78 +374,95 @@
 
       const btn = document.getElementById('btnExportExcel');
       btn.disabled = true;
-      btn.innerText = "Mengunduh Data...";
+      btn.innerText = "Mengolah Data...";
 
       try {
-        // Ambil range awal dan akhir bulan
         const startDateStr = `${monthVal}-01`;
         const endDateStr = `${monthVal}-31`;
 
+        // 1. Ambil seluruh master siswa
+        const studentSnap = await getDocs(collection(db, "students"));
+        const students = [];
+        studentSnap.forEach(d => {
+          students.push({ id: d.id, ...d.data() });
+        });
+
+        if (students.length === 0) {
+          alert("Belum ada data siswa terdaftar.");
+          return;
+        }
+
+        // 2. Ambil seluruh data absensi pada bulan tersebut
         const qRekap = query(
           collection(db, "attendances"),
           where("date", ">=", startDateStr),
           where("date", "<=", endDateStr)
         );
+        const attendanceSnap = await getDocs(qRekap);
 
-        const querySnapshot = await getDocs(qRekap);
+        // Map untuk menghitung total status per siswa (key: student_id)
+        const summaryMap = {};
 
-        if (querySnapshot.empty) {
-          alert(`Tidak ditemukan data absensi untuk bulan ${monthVal}.`);
-          btn.disabled = false;
-          btn.innerHTML = `<i data-lucide="download" class="w-4 h-4"></i> Download Excel Per Kelas`;
-          if (window.lucide) window.lucide.createIcons();
-          return;
-        }
-
-        // Kelompokkan data berdasarkan Kelas
-        const dataByClass = {};
-
-        querySnapshot.forEach((docSnap) => {
-          const d = docSnap.data();
-          const className = d.class || 'Lainnya';
-
-          if (!dataByClass[className]) {
-            dataByClass[className] = [];
+        attendanceSnap.forEach(d => {
+          const att = d.data();
+          const sId = att.student_id;
+          if (!summaryMap[sId]) {
+            summaryMap[sId] = { Hadir: 0, Terlambat: 0, Sakit: 0, Izin: 0, Alpa: 0 };
           }
 
-          const timeStr = d.timestamp ? new Date(d.timestamp.toDate()).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
+          if (att.status === 'Hadir') summaryMap[sId].Hadir++;
+          else if (att.status === 'Terlambat') summaryMap[sId].Terlambat++;
+          else if (att.status === 'Sakit') summaryMap[sId].Sakit++;
+          else if (att.status === 'Izin') summaryMap[sId].Izin++;
+          else if (att.status === 'Tanpa Keterangan') summaryMap[sId].Alpa++;
+        });
 
-          dataByClass[className].push({
-            "Tanggal": d.date,
-            "Waktu Tap": timeStr,
-            "NIS": d.nis || '-',
-            "Nama Siswa": d.name,
-            "Kelas": d.class,
-            "Status": d.status
+        // 3. Kelompokkan rekapitulasi siswa per kelas
+        const classGroup = {};
+
+        students.forEach(st => {
+          const className = st.class || 'Lainnya';
+          if (!classGroup[className]) {
+            classGroup[className] = [];
+          }
+
+          const counts = summaryMap[st.id] || { Hadir: 0, Terlambat: 0, Sakit: 0, Izin: 0, Alpa: 0 };
+
+          classGroup[className].push({
+            "NIS": st.nis || '-',
+            "Nama Siswa": st.name,
+            "Kelas": st.class,
+            "Hadir": counts.Hadir,
+            "Terlambat": counts.Terlambat,
+            "Sakit": counts.Sakit,
+            "Izin": counts.Izin,
+            "Alpa": counts.Alpa,
+            "Total Kehadiran": counts.Hadir + counts.Terlambat
           });
         });
 
-        // Buat Workbook Excel
+        // 4. Buat File Excel dengan Sheet per Kelas
         const workbook = XLSX.utils.book_new();
 
-        // Buat Sheet untuk setiap kelas
-        Object.keys(dataByClass).forEach((className) => {
-          const sheetData = dataByClass[className];
-          
-          // Urutkan data berdasarkan Tanggal
-          sheetData.sort((a, b) => a["Tanggal"].localeCompare(b["Tanggal"]));
+        Object.keys(classGroup).forEach(className => {
+          const rows = classGroup[className];
+          // Urutkan alfabetis nama siswa
+          rows.sort((a, b) => a["Nama Siswa"].localeCompare(b["Nama Siswa"]));
 
-          const worksheet = XLSX.utils.json_to_sheet(sheetData);
-
-          // Karakter aman untuk nama sheet Excel (maks 31 karakter, hapus karakter ilegal)
+          const worksheet = XLSX.utils.json_to_sheet(rows);
           const safeSheetName = className.replace(/[:\\/?*\[\]]/g, '').substring(0, 31);
           XLSX.utils.book_append_sheet(workbook, worksheet, safeSheetName);
         });
 
-        // Simpan File Excel
+        // 5. Download File Excel
         XLSX.writeFile(workbook, `Rekap_Absensi_${monthVal}.xlsx`);
-        alert(`Berhasil mengunduh Rekap Absensi Bulan ${monthVal}!`);
+        alert(`Berhasil mengunduh rekapitulasi absensi bulan ${monthVal}!`);
 
       } catch (err) {
-        alert("Gagal membuat file Excel: " + err.message);
+        alert("Gagal membuat rekap Excel: " + err.message);
       } finally {
         btn.disabled = false;
-        btn.innerHTML = `<i data-lucide="download" class="w-4 h-4"></i> Download Excel Per Kelas`;
+        btn.innerHTML = `<i data-lucide="download" class="w-4 h-4"></i> Download Rekap Per Kelas`;
         if (window.lucide) window.lucide.createIcons();
       }
     });
@@ -493,7 +510,7 @@
       }
     });
 
-    // --- H. TAP RFID AUTO LISTENER ---
+    // --- H. TAP RFID AUTO LISTENER + PENCEGAHAN ABSEN GANDA ---
     const rfidInput = document.getElementById('rfidInput');
     rfidInput.addEventListener('keypress', async (e) => {
       if (e.key === 'Enter') {
@@ -502,6 +519,7 @@
         if (!uid) return;
 
         try {
+          // 1. Cek ketersediaan siswa
           const studentRef = doc(db, "students", uid);
           const studentSnap = await getDoc(studentRef);
 
@@ -511,11 +529,26 @@
           }
 
           const sData = studentSnap.data();
+
+          // 2. CEK CEK ABSENSI GANDA: Cek apakah siswa ini sudah tap hari ini
+          const checkQuery = query(
+            collection(db, "attendances"),
+            where("student_id", "==", uid),
+            where("date", "==", todayStr)
+          );
+          const existingAbsenSnap = await getDocs(checkQuery);
+
+          if (!existingAbsenSnap.empty) {
+            alert(`Halo ${sData.name}, kamu sudah absen hari ini!`);
+            return; // Hentikan eksekusi, data tidak akan disimpan ulang
+          }
+
+          // 3. Jika belum absen, tentukan status Hadir/Terlambat (Batas jam 07:00)
           const lateLimit = new Date();
           lateLimit.setHours(7, 0, 0);
-
           const status = new Date() > lateLimit ? "Terlambat" : "Hadir";
 
+          // 4. Simpan ke Firestore
           await addDoc(collection(db, "attendances"), {
             student_id: uid,
             nis: sData.nis,
@@ -525,6 +558,9 @@
             date: todayStr,
             timestamp: serverTimestamp()
           });
+
+          alert(`Absensi berhasil! Halo ${sData.name} (${status})`);
+
         } catch (err) {
           alert("Gagal mencatat absensi: " + err.message);
         }
